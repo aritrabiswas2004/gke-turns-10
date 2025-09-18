@@ -1,5 +1,5 @@
 import streamlit as st
-import os
+import tempfile
 import pandas as pd
 import json
 from dotenv import load_dotenv
@@ -15,10 +15,16 @@ if not API_KEY:
     st.error("API key not found...")
     st.stop()
 
+kubeconfig_content = st.secrets.get("KUBECONFIG")
+
+with tempfile.NamedTemporaryFile(delete=False) as tmp:
+    tmp.write(kubeconfig_content.encode())
+    tmp_path = tmp.name
+
 # more from py client for k8s
 # https://github.com/kubernetes-client/python
 try:
-    config.load_kube_config()
+    config.load_kube_config(config_file=tmp_path)
     v1 = client.CoreV1Api()
     apps_v1 = client.AppsV1Api()
 except config.config_exception.ConfigException as e:
