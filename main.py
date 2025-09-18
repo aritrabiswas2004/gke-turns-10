@@ -9,7 +9,7 @@ from kubernetes.client import ApiException
 
 # from .env (DONT PUSH TO GITHUB)
 load_dotenv()
-API_KEY = os.environ.get("API_KEY") # os.getenv("API_KEY")
+API_KEY = st.secrets.get("API_KEY") # os.getenv("API_KEY")
 
 if not API_KEY:
     st.error("API key not found...")
