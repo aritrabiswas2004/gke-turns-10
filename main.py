@@ -110,7 +110,7 @@ def scale_deployment(service: str, replicas: int, namespace="default"):
 def get_gemini_intent(prompt: str):
     modified_prompt = f"""
     Convert this user request into JSON with fields:
-    - action: one of [status, logs, scale]
+    - action: one of [status, logs, scale, irrelevant]
     - service: the pod/deployment name, one of {podnames}
     - namespace: default unless specified
     - replicas: integer if scaling, else null
@@ -171,6 +171,8 @@ def process_main_prompt(prompt):
                 st.session_state.current_view = 'scale_view'
             elif action == "status":
                 st.session_state.current_view = 'status_view'
+            elif action == "irrelevant":
+                st.session_state.current_view = 'irrelevant_view'
             else:
                 st.warning("Unknown action")
 
@@ -239,6 +241,11 @@ def display_status_view():
         st.warning("Could not determine service from the intent.")
     st.json(intent)
 
+def display_irrelevant_view():
+    st.title(f"Irrelevant Prompt")
+    st.write("Looks like you asked an irrelevant prompt to Gemini. Click on the button below to go back to the home page and try again")
+    st.button("Back to Home (main Gemini Prompt)", on_click=go_to_main)
+
 
 if st.session_state.current_view == 'main':
     display_main_view()
@@ -248,3 +255,5 @@ elif st.session_state.current_view == 'scale_view':
     display_scale_view()
 elif st.session_state.current_view == 'status_view':
     display_status_view()
+elif st.session_state.current_view == 'irrelevant_view':
+    display_irrelevant_view()

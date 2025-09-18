@@ -1,3 +1,6 @@
 *.env
 /venv/
 skaffold
+.devcontainer/a
+DESCRIPTION.md
+sample.yaml
