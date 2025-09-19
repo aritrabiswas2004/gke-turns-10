@@ -51,6 +51,10 @@ def initialize_session_state():
         st.session_state.logs = None
     if 'response_json' not in st.session_state:
         st.session_state.response_json = None
+    if 'description' not in st.session_state:
+        st.session_state.description = None
+    if 'prompt' not in st.session_state:
+        st.session_state.prompt = None
 
 
 initialize_session_state()
@@ -82,6 +86,51 @@ def color_status(val):
     return ""
 
 
+def describe_pod(pod_name: str, namespace="default"):
+    try:
+        pods = v1.list_namespaced_pod(namespace)
+
+        for pod in pods.items:
+            if pod_name in pod.metadata.name:
+                return f"""
+                
+                === Metadata ===
+                
+                Pod Name: {pod.metadata.name}
+                Namespace: {pod.metadata.namespace}
+                Node: {pod.spec.node_name}
+                Labels: {pod.metadata.labels}
+                Annotations: {pod.metadata.annotations}
+                
+                === Status ===
+                
+                Host IP: {pod.status.host_ip}
+                Pod IP: {pod.status.pod_ip}
+                Container: {pod.status.container_statuses}
+                """
+
+        return f"No pod found for {pod_name}"
+    except ApiException as e:
+        return f"API ERROR:{e}"
+    except Exception as x:
+        return f"Some other error {x}"
+
+def pod_description_with_gemini(description: str, service: str, prompt: str):
+    desc_prompt = f"""
+Given below is part of the description for a {service} pod running on my GKE cluster for an online boutique store application.
+
+{description}
+
+Based on the above description answer the prompt given (by another person) below. If not possible suggest ways and commands on how to resolve any issues in the prompt if it makes sense
+
+{prompt}
+"""
+    response = gclient.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=desc_prompt
+    )
+    return response.text
+
 def get_logs(service: str, namespace="default", tail_lines=100):
     try:
         pods = v1.list_namespaced_pod(namespace)
@@ -110,7 +159,7 @@ def scale_deployment(service: str, replicas: int, namespace="default"):
 def get_gemini_intent(prompt: str):
     modified_prompt = f"""
     Convert this user request into JSON with fields:
-    - action: one of [status, logs, scale, irrelevant]
+    - action: one of [logs, scale, description, irrelevant]
     - service: the pod/deployment name, one of {podnames}
     - namespace: default unless specified
     - replicas: integer if scaling, else null
@@ -151,7 +200,9 @@ def go_to_main():
     st.session_state.current_view = 'main'
     st.session_state.service = None
     st.session_state.logs = None
+    st.session_state.description = None
     st.session_state.response_json = None
+    st.session_state.prompt = None
     st.rerun()
 
 
@@ -173,6 +224,11 @@ def process_main_prompt(prompt):
                 st.session_state.current_view = 'status_view'
             elif action == "irrelevant":
                 st.session_state.current_view = 'irrelevant_view'
+            elif action == "description":
+                st.session_state.prompt = prompt
+                st.session_state.service = service
+                st.session_state.description = describe_pod(service, intent.get("namespace", "default"))
+                st.session_state.current_view = 'description_view'
             else:
                 st.warning("Unknown action")
 
@@ -243,8 +299,23 @@ def display_status_view():
 
 def display_irrelevant_view():
     st.title(f"Irrelevant Prompt")
-    st.write("Looks like you asked an irrelevant prompt to Gemini. Click on the button below to go back to the home page and try again")
+    st.write("Looks like you asked an irrelevant prompt to this k8s cluster-specific Gemini agent. Click on the button below to go back to the home page and try again")
     st.button("Back to Home (main Gemini Prompt)", on_click=go_to_main)
+
+
+def display_description_view():
+    st.title(f"Describing {st.session_state.service} Pod")
+    st.button("Back to Home (main Gemini Prompt)", on_click=go_to_main)
+
+    # debug only
+    # st.text_area(f"Logs for {st.session_state.service}", st.session_state.description, height=200)
+
+    with st.spinner("Reviewing the Pod Description..."):
+        response = pod_description_with_gemini(
+            st.session_state.description, st.session_state.service, st.session_state.prompt
+        )
+        st.subheader("Gemini's Answer:")
+        st.markdown(response)
 
 
 if st.session_state.current_view == 'main':
@@ -257,3 +328,5 @@ elif st.session_state.current_view == 'status_view':
     display_status_view()
 elif st.session_state.current_view == 'irrelevant_view':
     display_irrelevant_view()
+elif st.session_state.current_view == 'description_view':
+    display_description_view()
